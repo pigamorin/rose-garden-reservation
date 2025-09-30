@@ -1,130 +1,179 @@
 import { Reservation } from '@/types/reservation';
-import emailjs from '@emailjs/browser';
+import { sendReservationEmail, sendStatusUpdateEmail } from './emailService';
 
-const RESERVATIONS_KEY = 'rose_garden_reservations';
+const STORAGE_KEY = 'rose_garden_reservations';
 const BLOCKED_SLOTS_KEY = 'rose_garden_blocked_slots';
+const MESSAGES_KEY = 'rose_garden_messages';
 
 export interface BlockedSlot {
   id: string;
   date: string;
   time: string;
-  reason?: string;
-  blockedBy: string;
-  blockedAt: string;
+  reason: string;
+  createdBy: string;
+  createdAt: string;
+}
+
+export interface Message {
+  id: string;
+  reservationId: string;
+  content: string;
+  timestamp: string;
+  sender: string;
+  type: 'note' | 'alert' | 'reminder';
 }
 
 export const getReservations = (): Reservation[] => {
-  const stored = localStorage.getItem(RESERVATIONS_KEY);
-  return stored ? JSON.parse(stored) : [];
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    return stored ? JSON.parse(stored) : [];
+  } catch (error) {
+    console.error('Error loading reservations:', error);
+    return [];
+  }
 };
 
-export const saveReservation = (reservation: Reservation): void => {
-  const reservations = getReservations();
-  const existingIndex = reservations.findIndex(r => r.id === reservation.id);
-  
-  if (existingIndex >= 0) {
-    reservations[existingIndex] = reservation;
-  } else {
+export const saveReservation = async (reservation: Reservation): Promise<boolean> => {
+  try {
+    const reservations = getReservations();
     reservations.push(reservation);
-  }
-  
-  localStorage.setItem(RESERVATIONS_KEY, JSON.stringify(reservations));
-};
-
-export const updateReservationStatus = (id: string, status: Reservation['status']): void => {
-  const reservations = getReservations();
-  const reservation = reservations.find(r => r.id === id);
-  
-  if (reservation) {
-    const oldStatus = reservation.status;
-    reservation.status = status;
-    saveReservation(reservation);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(reservations));
     
-    // Send notification when status changes to confirmed or declined
-    if (status === 'confirmed' && oldStatus !== 'confirmed') {
-      sendStatusNotification(reservation, 'confirmed');
-    } else if (status === 'declined' && oldStatus !== 'declined') {
-      sendStatusNotification(reservation, 'declined');
+    // Send confirmation email
+    const emailSent = await sendReservationEmail({
+      to_email: reservation.email,
+      to_name: reservation.name,
+      reservation_id: reservation.id,
+      date: new Date(reservation.date).toLocaleDateString(),
+      time: reservation.time,
+      party_size: reservation.partySize,
+      status: reservation.status,
+      restaurant_name: 'Rose Garden Restaurant',
+      restaurant_phone: '(555) 123-4567',
+      restaurant_email: 'info@rosegarden.com'
+    });
+
+    if (emailSent) {
+      console.log('Confirmation email sent successfully');
+    } else {
+      console.warn('Failed to send confirmation email');
     }
+
+    return true;
+  } catch (error) {
+    console.error('Error saving reservation:', error);
+    return false;
   }
 };
 
-export const updateReservationAttendance = (
-  id: string, 
-  attendance: 'attended' | 'no-show',
-  markedBy: string
-): void => {
-  const reservations = getReservations();
-  const reservation = reservations.find(r => r.id === id);
-  
-  if (reservation) {
-    reservation.attendance = attendance;
-    reservation.attendanceMarkedAt = new Date().toISOString();
-    reservation.attendanceMarkedBy = markedBy;
-    saveReservation(reservation);
+export const updateReservationStatus = async (id: string, status: Reservation['status']): Promise<boolean> => {
+  try {
+    const reservations = getReservations();
+    const index = reservations.findIndex(r => r.id === id);
+    
+    if (index !== -1) {
+      const oldStatus = reservations[index].status;
+      reservations[index].status = status;
+      reservations[index].updatedAt = new Date().toISOString();
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(reservations));
+      
+      // Send status update email if status changed
+      if (oldStatus !== status) {
+        const reservation = reservations[index];
+        const emailSent = await sendStatusUpdateEmail({
+          to_email: reservation.email,
+          to_name: reservation.name,
+          reservation_id: reservation.id,
+          date: new Date(reservation.date).toLocaleDateString(),
+          time: reservation.time,
+          party_size: reservation.partySize,
+          status: status,
+          restaurant_name: 'Rose Garden Restaurant',
+          restaurant_phone: '(555) 123-4567',
+          restaurant_email: 'info@rosegarden.com'
+        });
+
+        if (emailSent) {
+          console.log(`Status update email sent for reservation ${id}`);
+        } else {
+          console.warn(`Failed to send status update email for reservation ${id}`);
+        }
+      }
+      
+      return true;
+    }
+    return false;
+  } catch (error) {
+    console.error('Error updating reservation status:', error);
+    return false;
   }
 };
 
-export const deleteReservation = (id: string): void => {
-  const reservations = getReservations();
-  const filtered = reservations.filter(r => r.id !== id);
-  localStorage.setItem(RESERVATIONS_KEY, JSON.stringify(filtered));
+export const updateReservationAttendance = (id: string, attendance: 'attended' | 'no-show', markedBy?: string): boolean => {
+  try {
+    const reservations = getReservations();
+    const index = reservations.findIndex(r => r.id === id);
+    
+    if (index !== -1) {
+      reservations[index].attendance = attendance;
+      reservations[index].attendanceMarkedBy = markedBy;
+      reservations[index].attendanceMarkedAt = new Date().toISOString();
+      reservations[index].updatedAt = new Date().toISOString();
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(reservations));
+      return true;
+    }
+    return false;
+  } catch (error) {
+    console.error('Error updating reservation attendance:', error);
+    return false;
+  }
 };
 
-export const generateId = (): string => {
-  return Date.now().toString(36) + Math.random().toString(36).substr(2);
+export const deleteReservation = (id: string): boolean => {
+  try {
+    const reservations = getReservations();
+    const filtered = reservations.filter(r => r.id !== id);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(filtered));
+    return true;
+  } catch (error) {
+    console.error('Error deleting reservation:', error);
+    return false;
+  }
 };
 
-// Utility functions for formatting
-export const formatDate = (dateString: string): string => {
-  const date = new Date(dateString);
-  return date.toLocaleDateString('en-US', {
-    weekday: 'short',
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric'
-  });
-};
-
-export const formatTime = (timeString: string): string => {
-  const [hours, minutes] = timeString.split(':');
-  const date = new Date();
-  date.setHours(parseInt(hours), parseInt(minutes));
-  return date.toLocaleTimeString('en-US', {
-    hour: 'numeric',
-    minute: '2-digit',
-    hour12: true
-  });
-};
-
-export const getCurrentStaff = () => {
-  // This is a placeholder function that can be expanded later
-  return { username: 'current_staff' };
-};
-
-// Blocked Slots Management
+// Blocked slots management
 export const getBlockedSlots = (): BlockedSlot[] => {
-  const stored = localStorage.getItem(BLOCKED_SLOTS_KEY);
-  return stored ? JSON.parse(stored) : [];
-};
-
-export const saveBlockedSlot = (slot: BlockedSlot): void => {
-  const slots = getBlockedSlots();
-  const existingIndex = slots.findIndex(s => s.id === slot.id);
-  
-  if (existingIndex >= 0) {
-    slots[existingIndex] = slot;
-  } else {
-    slots.push(slot);
+  try {
+    const stored = localStorage.getItem(BLOCKED_SLOTS_KEY);
+    return stored ? JSON.parse(stored) : [];
+  } catch (error) {
+    console.error('Error loading blocked slots:', error);
+    return [];
   }
-  
-  localStorage.setItem(BLOCKED_SLOTS_KEY, JSON.stringify(slots));
 };
 
-export const deleteBlockedSlot = (id: string): void => {
-  const slots = getBlockedSlots();
-  const filtered = slots.filter(s => s.id !== id);
-  localStorage.setItem(BLOCKED_SLOTS_KEY, JSON.stringify(filtered));
+export const saveBlockedSlot = (slot: BlockedSlot): boolean => {
+  try {
+    const slots = getBlockedSlots();
+    slots.push(slot);
+    localStorage.setItem(BLOCKED_SLOTS_KEY, JSON.stringify(slots));
+    return true;
+  } catch (error) {
+    console.error('Error saving blocked slot:', error);
+    return false;
+  }
+};
+
+export const deleteBlockedSlot = (id: string): boolean => {
+  try {
+    const slots = getBlockedSlots();
+    const filtered = slots.filter(s => s.id !== id);
+    localStorage.setItem(BLOCKED_SLOTS_KEY, JSON.stringify(filtered));
+    return true;
+  } catch (error) {
+    console.error('Error deleting blocked slot:', error);
+    return false;
+  }
 };
 
 export const isSlotBlocked = (date: string, time: string): boolean => {
@@ -132,144 +181,52 @@ export const isSlotBlocked = (date: string, time: string): boolean => {
   return blockedSlots.some(slot => slot.date === date && slot.time === time);
 };
 
-// Notification System
-const sendStatusNotification = async (reservation: Reservation, status: 'confirmed' | 'declined') => {
-  const { communicationPreference, customerName, email, phone, date, time, partySize } = reservation;
-  
-  const messages = {
-    confirmed: {
-      email: {
-        subject: 'Reservation Confirmed - Rose Garden Restaurant',
-        body: `Dear ${customerName},\n\nGreat news! Your reservation has been confirmed.\n\nDetails:\n- Date: ${new Date(date).toLocaleDateString()}\n- Time: ${time}\n- Party Size: ${partySize} guests\n- Restaurant: Rose Garden\n\nWe look forward to serving you!\n\nBest regards,\nRose Garden Team`
-      },
-      sms: `Hi ${customerName}! Your Rose Garden reservation for ${new Date(date).toLocaleDateString()} at ${time} for ${partySize} guests is CONFIRMED. See you soon!`,
-      whatsapp: `🌹 Rose Garden Confirmation\n\nHi ${customerName}!\n\nYour reservation is CONFIRMED ✅\n📅 ${new Date(date).toLocaleDateString()}\n🕐 ${time}\n👥 ${partySize} guests\n\nWe can't wait to serve you! 🍽️`
-    },
-    declined: {
-      email: {
-        subject: 'Reservation Update - Rose Garden Restaurant',
-        body: `Dear ${customerName},\n\nWe regret to inform you that we cannot accommodate your reservation request for ${new Date(date).toLocaleDateString()} at ${time}.\n\nThis may be due to:\n- Full capacity for that time slot\n- Restaurant closure\n- Special event\n\nPlease call us at 0244 365634 to discuss alternative dates and times.\n\nWe apologize for any inconvenience.\n\nBest regards,\nRose Garden Team`
-      },
-      sms: `Hi ${customerName}. Unfortunately, we cannot accommodate your Rose Garden reservation for ${new Date(date).toLocaleDateString()} at ${time}. Please call 0244 365634 for alternatives. Sorry!`,
-      whatsapp: `🌹 Rose Garden Update\n\nHi ${customerName},\n\nWe're sorry, but we cannot accommodate your reservation for:\n📅 ${new Date(date).toLocaleDateString()}\n🕐 ${time}\n\nPlease call 0244 365634 to find alternative times. We apologize for the inconvenience! 🙏`
-    }
-  };
-
-  const message = messages[status];
-  
+// Messages management
+export const getMessages = (): Message[] => {
   try {
-    switch (communicationPreference) {
-      case 'email':
-        await sendEmailNotification(email, message.email.subject, message.email.body);
-        break;
-      case 'sms':
-        await sendSMSNotification(phone, message.sms);
-        break;
-      case 'whatsapp':
-        await sendWhatsAppNotification(phone, message.whatsapp);
-        break;
-    }
-    
-    console.log(`${status} notification sent to ${customerName} via ${communicationPreference}`);
+    const stored = localStorage.getItem(MESSAGES_KEY);
+    return stored ? JSON.parse(stored) : [];
   } catch (error) {
-    console.error(`Failed to send ${status} notification:`, error);
+    console.error('Error loading messages:', error);
+    return [];
   }
 };
 
-// Email notification function using EmailJS
-const sendEmailNotification = async (email: string, subject: string, body: string) => {
+export const saveMessage = (message: Message): boolean => {
   try {
-    // Initialize EmailJS with your public key
-    emailjs.init("YOUR_PUBLIC_KEY"); // Replace with your actual EmailJS public key
-    
-    const templateParams = {
-      to_email: email,
-      to_name: email.split('@')[0],
-      subject: subject,
-      message: body,
-      from_name: 'Rose Garden Restaurant',
-      reply_to: 'reservations@rosegarden.com'
-    };
-
-    const response = await emailjs.send(
-      'YOUR_SERVICE_ID', // Replace with your EmailJS service ID
-      'YOUR_TEMPLATE_ID', // Replace with your EmailJS template ID
-      templateParams
-    );
-
-    console.log('📧 EMAIL SENT SUCCESSFULLY:', response);
-    return response;
+    const messages = getMessages();
+    messages.push(message);
+    localStorage.setItem(MESSAGES_KEY, JSON.stringify(messages));
+    return true;
   } catch (error) {
-    console.error('📧 EMAIL FAILED:', error);
-    
-    // Fallback: Show a notification that email would be sent
-    console.log('📧 EMAIL NOTIFICATION (Demo Mode):', { 
-      to: email, 
-      subject, 
-      body: body.substring(0, 100) + '...' 
-    });
-    
-    // You can also show a toast notification to the user
-    if (typeof window !== 'undefined' && window.alert) {
-      setTimeout(() => {
-        alert(`Email notification sent to ${email}\n\nSubject: ${subject}`);
-      }, 1000);
-    }
+    console.error('Error saving message:', error);
+    return false;
   }
 };
 
-const sendSMSNotification = async (phone: string, message: string) => {
-  try {
-    // For production, implement with Twilio or similar service
-    const response = await fetch('/api/send-sms', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ phone, message })
-    });
-    
-    if (response.ok) {
-      console.log('📱 SMS SENT SUCCESSFULLY');
-    } else {
-      throw new Error('SMS API failed');
-    }
-  } catch (error) {
-    console.error('📱 SMS FAILED:', error);
-    
-    // Fallback: Show a notification that SMS would be sent
-    console.log('📱 SMS NOTIFICATION (Demo Mode):', { to: phone, message });
-    
-    if (typeof window !== 'undefined' && window.alert) {
-      setTimeout(() => {
-        alert(`SMS notification sent to ${phone}\n\nMessage: ${message}`);
-      }, 1500);
-    }
-  }
+export const getReservationMessages = (reservationId: string): Message[] => {
+  const messages = getMessages();
+  return messages.filter(m => m.reservationId === reservationId);
 };
 
-const sendWhatsAppNotification = async (phone: string, message: string) => {
-  try {
-    // For production, implement with WhatsApp Business API
-    const response = await fetch('/api/send-whatsapp', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ phone, message })
-    });
-    
-    if (response.ok) {
-      console.log('💬 WHATSAPP SENT SUCCESSFULLY');
-    } else {
-      throw new Error('WhatsApp API failed');
-    }
-  } catch (error) {
-    console.error('💬 WHATSAPP FAILED:', error);
-    
-    // Fallback: Show a notification that WhatsApp would be sent
-    console.log('💬 WHATSAPP NOTIFICATION (Demo Mode):', { to: phone, message });
-    
-    if (typeof window !== 'undefined' && window.alert) {
-      setTimeout(() => {
-        alert(`WhatsApp notification sent to ${phone}\n\nMessage: ${message}`);
-      }, 2000);
-    }
-  }
+// Utility functions
+export const generateId = (): string => {
+  return Date.now().toString(36) + Math.random().toString(36).substr(2);
+};
+
+export const formatDate = (date: string): string => {
+  return new Date(date).toLocaleDateString('en-US', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric'
+  });
+};
+
+export const formatTime = (time: string): string => {
+  const [hours, minutes] = time.split(':');
+  const hour = parseInt(hours);
+  const ampm = hour >= 12 ? 'PM' : 'AM';
+  const displayHour = hour % 12 || 12;
+  return `${displayHour}:${minutes} ${ampm}`;
 };

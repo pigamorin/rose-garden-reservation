@@ -3,7 +3,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { CalendarIcon, ClockIcon, UsersIcon, TrendingUpIcon, CheckCircleIcon, XCircleIcon, SettingsIcon, UserCogIcon, ArrowLeftIcon, LogOutIcon } from 'lucide-react';
+import { CalendarIcon, ClockIcon, UsersIcon, TrendingUpIcon, CheckCircleIcon, XCircleIcon, SettingsIcon, UserCogIcon, ArrowLeftIcon, LogOutIcon, MailIcon } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { getReservations, updateReservationStatus, updateReservationAttendance } from '@/lib/storage';
 import { getCurrentUser, hasPermission } from '@/lib/userStorage';
 import { Reservation } from '@/types/reservation';
@@ -12,7 +13,7 @@ import ReservationTable from '@/components/ReservationTable';
 import AnalyticsDashboard from '@/components/AnalyticsDashboard';
 import UserManagement from '@/components/UserManagement';
 import SlotManagement from '@/components/SlotManagement';
-import { Link } from 'react-router-dom';
+import EmailSetup from '@/components/EmailSetup';
 
 export default function Dashboard() {
   const [reservations, setReservations] = useState<Reservation[]>([]);
@@ -83,7 +84,8 @@ export default function Dashboard() {
     { id: 'reservations', label: 'Reservations', icon: CalendarIcon, permission: 'view_reservations' },
     { id: 'analytics', label: 'Analytics', icon: TrendingUpIcon, permission: 'view_analytics' },
     { id: 'slots', label: 'Slot Management', icon: ClockIcon, permission: 'manage_slots' },
-    { id: 'users', label: 'User Management', icon: UserCogIcon, permission: 'manage_users' }
+    { id: 'users', label: 'User Management', icon: UserCogIcon, permission: 'manage_users' },
+    { id: 'email', label: 'Email Setup', icon: MailIcon, permission: 'manage_users' }
   ].filter(tab => hasPermission(tab.permission));
 
   console.log('Dashboard - Available tabs:', availableTabs.map(t => t.id));
@@ -111,8 +113,9 @@ export default function Dashboard() {
               <Button 
                 variant="outline" 
                 onClick={handleLogout}
+                className="flex items-center gap-2"
               >
-                <LogOutIcon className="h-4 w-4 mr-2" />
+                <LogOutIcon className="h-4 w-4" />
                 Logout
               </Button>
             </div>
@@ -171,7 +174,7 @@ export default function Dashboard() {
 
         {/* Main Content Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-2 lg:grid-cols-4">
+          <TabsList className="grid w-full grid-cols-2 lg:grid-cols-5">
             {availableTabs.map(tab => {
               const Icon = tab.icon;
               return (
@@ -239,6 +242,12 @@ export default function Dashboard() {
           {hasPermission('manage_users') && (
             <TabsContent value="users">
               <UserManagement />
+            </TabsContent>
+          )}
+
+          {hasPermission('manage_users') && (
+            <TabsContent value="email">
+              <EmailSetup />
             </TabsContent>
           )}
         </Tabs>
