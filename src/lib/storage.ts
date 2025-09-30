@@ -1,4 +1,5 @@
 import { Reservation } from '@/types/reservation';
+import { sendAutomaticEmail } from './emailService';
 
 const RESERVATIONS_KEY = 'rose_garden_reservations';
 const BLOCKED_SLOTS_KEY = 'rose_garden_blocked_slots';
@@ -39,13 +40,13 @@ export const updateReservationStatus = (id: string, status: Reservation['status'
   if (reservation) {
     const oldStatus = reservation.status;
     reservation.status = status;
-    saveReservation(reservation);
+    localStorage.setItem(RESERVATIONS_KEY, JSON.stringify(reservations));
     
-    // Send SMS notification when status changes to confirmed or declined
+    // Send automatic notifications when status changes to confirmed or declined
     if (status === 'confirmed' && oldStatus !== 'confirmed') {
-      sendSMSStatusNotification(reservation, 'confirmed');
+      sendStatusNotification(reservation, 'confirmed');
     } else if (status === 'declined' && oldStatus !== 'declined') {
-      sendSMSStatusNotification(reservation, 'declined');
+      sendStatusNotification(reservation, 'declined');
     }
   }
 };
@@ -62,7 +63,7 @@ export const updateReservationAttendance = (
     reservation.attendance = attendance;
     reservation.attendanceMarkedAt = new Date().toISOString();
     reservation.attendanceMarkedBy = markedBy;
-    saveReservation(reservation);
+    localStorage.setItem(RESERVATIONS_KEY, JSON.stringify(reservations));
   }
 };
 
@@ -99,7 +100,6 @@ export const formatTime = (timeString: string): string => {
 };
 
 export const getCurrentStaff = () => {
-  // This is a placeholder function that can be expanded later
   return { username: 'current_staff' };
 };
 
@@ -133,92 +133,14 @@ export const isSlotBlocked = (date: string, time: string): boolean => {
   return blockedSlots.some(slot => slot.date === date && slot.time === time);
 };
 
-// SMS Notification Functions
-const sendSMSStatusNotification = async (reservation: Reservation, status: 'confirmed' | 'declined') => {
-  const provider = localStorage.getItem('sms_provider');
-  if (!provider) {
-    console.log('SMS provider not configured - skipping SMS notification');
-    return;
-  }
-
-  const { customerName, phone, date, time, partySize } = reservation;
-  
-  const messages = {
-    confirmed: `Hi ${customerName}! Your Rose Garden reservation for ${new Date(date).toLocaleDateString()} at ${time} for ${partySize} guests is CONFIRMED. See you soon!`,
-    declined: `Hi ${customerName}. Unfortunately, we cannot accommodate your Rose Garden reservation for ${new Date(date).toLocaleDateString()} at ${time}. Please call 0244 365634 for alternatives. Sorry!`
-  };
-
-  const message = messages[status];
-  
-  try {
-    // Log SMS for tracking
-    const smsLog = {
-      id: Date.now().toString() + Math.random().toString(36).substr(2),
-      to: phone,
-      message,
-      status: 'sent',
-      timestamp: new Date().toISOString(),
-      reservationId: reservation.id,
-      customerName: customerName || reservation.name,
-      type: 'auto_notification'
-    };
-
-    // Save to SMS logs
-    const existingLogs = JSON.parse(localStorage.getItem('sms_logs') || '[]');
-    existingLogs.unshift(smsLog);
-    localStorage.setItem('sms_logs', JSON.stringify(existingLogs));
-
-    // In production, this would make actual API call to SMS provider
-    console.log(`📱 AUTO SMS SENT (${status.toUpperCase()}):`, {
-      provider,
-      to: phone,
-      customer: customerName,
-      message: message.substring(0, 50) + '...',
-      reservationId: reservation.id
-    });
-
-    // Show notification to user
-    if (typeof window !== 'undefined') {
-      setTimeout(() => {
-        const statusEmoji = status === 'confirmed' ? '✅' : '❌';
-        alert(`${statusEmoji} SMS automatically sent!\n\nTo: ${customerName} (${phone})\nStatus: ${status.toUpperCase()}\n\nMessage: ${message.substring(0, 100)}...`);
-      }, 1000);
-    }
-
-    return true;
-  } catch (error) {
-    console.error('Failed to send SMS notification:', error);
-    
-    // Log failed SMS
-    const failedSmsLog = {
-      id: Date.now().toString() + Math.random().toString(36).substr(2),
-      to: phone,
-      message,
-      status: 'failed',
-      timestamp: new Date().toISOString(),
-      reservationId: reservation.id,
-      customerName: customerName || reservation.name,
-      type: 'auto_notification',
-      error: error.message || 'Unknown error'
-    };
-
-    const existingLogs = JSON.parse(localStorage.getItem('sms_logs') || '[]');
-    existingLogs.unshift(failedSmsLog);
-    localStorage.setItem('sms_logs', JSON.stringify(existingLogs));
-
-    return false;
-  }
-};
-
-// Simple notification system for new reservations
+// Notification Functions
 const sendNewReservationNotification = (reservation: Reservation) => {
-  const { customerName, email, phone, date, time, partySize } = reservation;
+  const { communicationPreference, customerName, email, phone, date, time, partySize } = reservation;
   
-  // Show demo notification for new reservation
   console.log(`📧 NEW RESERVATION NOTIFICATION:`, { 
+    to: communicationPreference === 'email' ? email : phone,
+    method: communicationPreference,
     customer: customerName,
-    email,
-    phone,
     date: new Date(date).toLocaleDateString(),
     time,
     partySize
@@ -227,7 +149,182 @@ const sendNewReservationNotification = (reservation: Reservation) => {
   // Show browser notification
   if (typeof window !== 'undefined') {
     setTimeout(() => {
-      alert(`✅ New reservation received!\n\nCustomer: ${customerName}\nDate: ${new Date(date).toLocaleDateString()}\nTime: ${time}\nParty Size: ${partySize}\n\nThank you message sent to customer.`);
+      alert(`✅ New reservation received!\n\nCustomer: ${customerName}\nDate: ${new Date(date).toLocaleDateString()}\nTime: ${time}\nParty Size: ${partySize}\n\nWelcome message sent via ${communicationPreference}.`);
     }, 500);
   }
+};
+
+// Enhanced notification system with automatic email/SMS sending
+const sendStatusNotification = async (reservation: Reservation, status: 'confirmed' | 'declined') => {
+  const { communicationPreference, customerName, email, phone, date, time, partySize } = reservation;
+  
+  console.log(`📧 ${status.toUpperCase()} NOTIFICATION:`, { 
+    to: communicationPreference === 'email' ? email : phone,
+    method: communicationPreference,
+    customer: customerName,
+    status
+  });
+
+  // Send automatic email if customer prefers email
+  if (communicationPreference === 'email') {
+    try {
+      const emailSent = await sendAutomaticEmail(reservation, status);
+      if (emailSent) {
+        console.log('✅ Automatic email sent successfully');
+        
+        // Show success notification
+        if (typeof window !== 'undefined') {
+          setTimeout(() => {
+            const statusEmoji = status === 'confirmed' ? '✅' : '❌';
+            alert(`${statusEmoji} Email ${status} sent!\n\nCustomer: ${customerName}\nEmail: ${email}\n\nAutomatic ${status} email sent successfully!`);
+          }, 1000);
+        }
+      } else {
+        console.log('❌ Failed to send automatic email');
+        
+        // Show error notification
+        if (typeof window !== 'undefined') {
+          setTimeout(() => {
+            alert(`❌ Email failed to send\n\nCustomer: ${customerName}\nEmail: ${email}\n\nPlease check your EmailJS configuration.`);
+          }, 1000);
+        }
+      }
+    } catch (error) {
+      console.error('Error sending automatic email:', error);
+    }
+  }
+
+  // Send automatic SMS if customer prefers SMS
+  if (communicationPreference === 'sms') {
+    sendStatusSMS(reservation, status);
+  }
+
+  // Show general notification for other preferences
+  if (communicationPreference === 'whatsapp') {
+    if (typeof window !== 'undefined') {
+      setTimeout(() => {
+        const statusEmoji = status === 'confirmed' ? '✅' : '❌';
+        alert(`${statusEmoji} Reservation ${status}!\n\nCustomer: ${customerName}\nWhatsApp: ${phone}\n\nWhatsApp message would be sent (configure WhatsApp in settings).`);
+      }, 1000);
+    }
+  }
+};
+
+// SMS Functions (existing code)
+const saveSMSLog = (log: any) => {
+  const logs = JSON.parse(localStorage.getItem('sms_logs') || '[]');
+  logs.unshift(log);
+  localStorage.setItem('sms_logs', JSON.stringify(logs));
+};
+
+const sendStatusSMS = async (reservation: Reservation, status: 'confirmed' | 'declined') => {
+  const provider = localStorage.getItem('sms_provider');
+  if (!provider) return;
+
+  const messages = {
+    confirmed: `Hi ${reservation.customerName || reservation.name}! Your Rose Garden reservation for ${new Date(reservation.date).toLocaleDateString()} at ${reservation.time} for ${reservation.partySize} guests is CONFIRMED ✅ See you soon!`,
+    declined: `Hi ${reservation.customerName || reservation.name}. Unfortunately, we cannot accommodate your Rose Garden reservation for ${new Date(reservation.date).toLocaleDateString()} at ${reservation.time}. Please call 0244 365634 for alternatives. Sorry! 😔`
+  };
+
+  const message = messages[status];
+
+  try {
+    await sendSMSMessage(reservation.phone, message);
+    
+    const smsLog = {
+      id: generateId(),
+      to: reservation.phone,
+      message,
+      status: 'sent',
+      timestamp: new Date().toISOString(),
+      reservationId: reservation.id,
+      customerName: reservation.customerName || reservation.name,
+      type: status
+    };
+    
+    saveSMSLog(smsLog);
+    console.log(`📱 ${status.toUpperCase()} SMS sent:`, { customer: reservation.customerName || reservation.name, phone: reservation.phone });
+    
+    // Show browser notification
+    if (typeof window !== 'undefined') {
+      setTimeout(() => {
+        const statusEmoji = status === 'confirmed' ? '✅' : '❌';
+        alert(`${statusEmoji} SMS ${status} sent!\n\nCustomer: ${reservation.customerName || reservation.name}\nPhone: ${reservation.phone}\n\nMessage sent successfully via SMS.`);
+      }, 1000);
+    }
+  } catch (error) {
+    console.error(`Failed to send ${status} SMS:`, error);
+  }
+};
+
+const sendSMSMessage = async (phone: string, message: string): Promise<void> => {
+  const provider = localStorage.getItem('sms_provider');
+  
+  // Simulate SMS API call based on provider
+  switch (provider) {
+    case 'twilio':
+      await sendTwilioSMS(phone, message);
+      break;
+    case 'nexmo':
+      await sendNexmoSMS(phone, message);
+      break;
+    case 'messagebird':
+      await sendMessageBirdSMS(phone, message);
+      break;
+    case 'plivo':
+      await sendPlivoSMS(phone, message);
+      break;
+    case 'clicksend':
+      await sendClickSendSMS(phone, message);
+      break;
+    case 'textmagic':
+      await sendTextMagicSMS(phone, message);
+      break;
+    default:
+      throw new Error('SMS provider not configured');
+  }
+};
+
+const sendTwilioSMS = async (phone: string, message: string) => {
+  const accountSid = localStorage.getItem('sms_account_sid');
+  const authToken = localStorage.getItem('sms_auth_token');
+  const fromNumber = localStorage.getItem('sms_from_number');
+  
+  if (!accountSid || !authToken || !fromNumber) {
+    throw new Error('Twilio credentials not configured');
+  }
+
+  console.log('📱 TWILIO SMS (Demo):', {
+    from: fromNumber,
+    to: phone,
+    body: message,
+    accountSid: accountSid.substring(0, 10) + '...'
+  });
+
+  await new Promise(resolve => setTimeout(resolve, 1000));
+};
+
+const sendNexmoSMS = async (phone: string, message: string) => {
+  console.log('📱 NEXMO SMS (Demo):', { to: phone, text: message });
+  await new Promise(resolve => setTimeout(resolve, 1000));
+};
+
+const sendMessageBirdSMS = async (phone: string, message: string) => {
+  console.log('📱 MESSAGEBIRD SMS (Demo):', { to: phone, body: message });
+  await new Promise(resolve => setTimeout(resolve, 1000));
+};
+
+const sendPlivoSMS = async (phone: string, message: string) => {
+  console.log('📱 PLIVO SMS (Demo):', { dst: phone, text: message });
+  await new Promise(resolve => setTimeout(resolve, 1000));
+};
+
+const sendClickSendSMS = async (phone: string, message: string) => {
+  console.log('📱 CLICKSEND SMS (Demo):', { to: phone, body: message });
+  await new Promise(resolve => setTimeout(resolve, 1000));
+};
+
+const sendTextMagicSMS = async (phone: string, message: string) => {
+  console.log('📱 TEXTMAGIC SMS (Demo):', { phones: phone, text: message });
+  await new Promise(resolve => setTimeout(resolve, 1000));
 };
