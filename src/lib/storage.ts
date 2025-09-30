@@ -135,11 +135,11 @@ export const isSlotBlocked = (date: string, time: string): boolean => {
 
 // Notification Functions
 const sendNewReservationNotification = (reservation: Reservation) => {
-  const { communicationPreference, customerName, email, phone, date, time, partySize } = reservation;
+  const { customerName, email, phone, date, time, partySize, communicationPreference } = reservation;
   
   console.log(`📧 NEW RESERVATION NOTIFICATION:`, { 
     to: communicationPreference === 'email' ? email : phone,
-    method: communicationPreference,
+    method: communicationPreference || 'email',
     customer: customerName,
     date: new Date(date).toLocaleDateString(),
     time,
@@ -149,7 +149,7 @@ const sendNewReservationNotification = (reservation: Reservation) => {
   // Show browser notification
   if (typeof window !== 'undefined') {
     setTimeout(() => {
-      alert(`✅ New reservation received!\n\nCustomer: ${customerName}\nDate: ${new Date(date).toLocaleDateString()}\nTime: ${time}\nParty Size: ${partySize}\n\nWelcome message sent via ${communicationPreference}.`);
+      alert(`✅ New reservation received!\n\nCustomer: ${customerName}\nDate: ${new Date(date).toLocaleDateString()}\nTime: ${time}\nParty Size: ${partySize}\n\nWelcome message sent via ${communicationPreference || 'email'}.`);
     }, 500);
   }
 };
@@ -160,34 +160,19 @@ const sendStatusNotification = async (reservation: Reservation, status: 'confirm
   
   console.log(`📧 ${status.toUpperCase()} NOTIFICATION:`, { 
     to: communicationPreference === 'email' ? email : phone,
-    method: communicationPreference,
+    method: communicationPreference || 'email',
     customer: customerName,
     status
   });
 
-  // Send automatic email if customer prefers email
-  if (communicationPreference === 'email') {
+  // Send automatic email if customer prefers email or no preference set
+  if (!communicationPreference || communicationPreference === 'email') {
     try {
       const emailSent = await sendAutomaticEmail(reservation, status);
       if (emailSent) {
         console.log('✅ Automatic email sent successfully');
-        
-        // Show success notification
-        if (typeof window !== 'undefined') {
-          setTimeout(() => {
-            const statusEmoji = status === 'confirmed' ? '✅' : '❌';
-            alert(`${statusEmoji} Email ${status} sent!\n\nCustomer: ${customerName}\nEmail: ${email}\n\nAutomatic ${status} email sent successfully!`);
-          }, 1000);
-        }
       } else {
         console.log('❌ Failed to send automatic email');
-        
-        // Show error notification
-        if (typeof window !== 'undefined') {
-          setTimeout(() => {
-            alert(`❌ Email failed to send\n\nCustomer: ${customerName}\nEmail: ${email}\n\nPlease check your EmailJS configuration.`);
-          }, 1000);
-        }
       }
     } catch (error) {
       console.error('Error sending automatic email:', error);
@@ -199,7 +184,7 @@ const sendStatusNotification = async (reservation: Reservation, status: 'confirm
     sendStatusSMS(reservation, status);
   }
 
-  // Show general notification for other preferences
+  // Show general notification for WhatsApp preference
   if (communicationPreference === 'whatsapp') {
     if (typeof window !== 'undefined') {
       setTimeout(() => {
@@ -210,7 +195,7 @@ const sendStatusNotification = async (reservation: Reservation, status: 'confirm
   }
 };
 
-// SMS Functions (existing code)
+// SMS Functions
 const saveSMSLog = (log: any) => {
   const logs = JSON.parse(localStorage.getItem('sms_logs') || '[]');
   logs.unshift(log);
