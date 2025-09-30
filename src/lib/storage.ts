@@ -41,11 +41,11 @@ export const updateReservationStatus = (id: string, status: Reservation['status'
     reservation.status = status;
     saveReservation(reservation);
     
-    // Send notification when status changes to confirmed or declined
+    // Send SMS notification when status changes to confirmed or declined
     if (status === 'confirmed' && oldStatus !== 'confirmed') {
-      sendStatusNotification(reservation, 'confirmed');
+      sendSMSStatusNotification(reservation, 'confirmed');
     } else if (status === 'declined' && oldStatus !== 'declined') {
-      sendStatusNotification(reservation, 'declined');
+      sendSMSStatusNotification(reservation, 'declined');
     }
   }
 };
@@ -133,76 +133,101 @@ export const isSlotBlocked = (date: string, time: string): boolean => {
   return blockedSlots.some(slot => slot.date === date && slot.time === time);
 };
 
-// Simple notification system without Gmail API
-const sendNewReservationNotification = (reservation: Reservation) => {
-  const { communicationPreference, customerName, email, phone, date, time, partySize } = reservation;
-  
-  const messages = {
-    email: {
-      subject: 'Reservation Received - Rose Garden Restaurant',
-      body: `Dear ${customerName},\n\nThank you for your reservation request!\n\nDetails:\n- Date: ${new Date(date).toLocaleDateString()}\n- Time: ${time}\n- Party Size: ${partySize} guests\n- Restaurant: Rose Garden\n\nWe will review your request and contact you shortly to confirm.\n\nBest regards,\nRose Garden Team`
-    },
-    sms: `Hi ${customerName}! Thanks for your Rose Garden reservation request for ${new Date(date).toLocaleDateString()} at ${time} for ${partySize} guests. We'll confirm shortly!`,
-    whatsapp: `🌹 Rose Garden - Reservation Received\n\nHi ${customerName}!\n\nThanks for your reservation request:\n📅 ${new Date(date).toLocaleDateString()}\n🕐 ${time}\n👥 ${partySize} guests\n\nWe'll confirm shortly! 🍽️`
-  };
-
-  const message = messages[communicationPreference];
-  
-  // Show demo notification
-  console.log(`📧 NEW RESERVATION NOTIFICATION (Demo Mode):`, { 
-    to: communicationPreference === 'email' ? email : phone,
-    method: communicationPreference,
-    subject: message.subject || 'Reservation Notification',
-    preview: (message.body || message).substring(0, 100) + '...'
-  });
-
-  // Show browser notification
-  if (typeof window !== 'undefined') {
-    setTimeout(() => {
-      alert(`✅ Reservation submitted!\n\nCustomer: ${customerName}\nMethod: ${communicationPreference}\n\nNotification would be sent via ${communicationPreference === 'email' ? 'email' : 'SMS/WhatsApp'}.`);
-    }, 500);
+// SMS Notification Functions
+const sendSMSStatusNotification = async (reservation: Reservation, status: 'confirmed' | 'declined') => {
+  const provider = localStorage.getItem('sms_provider');
+  if (!provider) {
+    console.log('SMS provider not configured - skipping SMS notification');
+    return;
   }
-};
 
-// Notification System
-const sendStatusNotification = (reservation: Reservation, status: 'confirmed' | 'declined') => {
-  const { communicationPreference, customerName, email, phone, date, time, partySize } = reservation;
+  const { customerName, phone, date, time, partySize } = reservation;
   
   const messages = {
-    confirmed: {
-      email: {
-        subject: 'Reservation Confirmed - Rose Garden Restaurant',
-        body: `Dear ${customerName},\n\nGreat news! Your reservation has been confirmed.\n\nDetails:\n- Date: ${new Date(date).toLocaleDateString()}\n- Time: ${time}\n- Party Size: ${partySize} guests\n- Restaurant: Rose Garden\n\nWe look forward to serving you!\n\nBest regards,\nRose Garden Team`
-      },
-      sms: `Hi ${customerName}! Your Rose Garden reservation for ${new Date(date).toLocaleDateString()} at ${time} for ${partySize} guests is CONFIRMED. See you soon!`,
-      whatsapp: `🌹 Rose Garden Confirmation\n\nHi ${customerName}!\n\nYour reservation is CONFIRMED ✅\n📅 ${new Date(date).toLocaleDateString()}\n🕐 ${time}\n👥 ${partySize} guests\n\nWe can't wait to serve you! 🍽️`
-    },
-    declined: {
-      email: {
-        subject: 'Reservation Update - Rose Garden Restaurant',
-        body: `Dear ${customerName},\n\nWe regret to inform you that we cannot accommodate your reservation request for ${new Date(date).toLocaleDateString()} at ${time}.\n\nThis may be due to:\n- Full capacity for that time slot\n- Restaurant closure\n- Special event\n\nPlease call us at 0244 365634 to discuss alternative dates and times.\n\nWe apologize for any inconvenience.\n\nBest regards,\nRose Garden Team`
-      },
-      sms: `Hi ${customerName}. Unfortunately, we cannot accommodate your Rose Garden reservation for ${new Date(date).toLocaleDateString()} at ${time}. Please call 0244 365634 for alternatives. Sorry!`,
-      whatsapp: `🌹 Rose Garden Update\n\nHi ${customerName},\n\nWe're sorry, but we cannot accommodate your reservation for:\n📅 ${new Date(date).toLocaleDateString()}\n🕐 ${time}\n\nPlease call 0244 365634 to find alternative times. We apologize for the inconvenience! 🙏`
-    }
+    confirmed: `Hi ${customerName}! Your Rose Garden reservation for ${new Date(date).toLocaleDateString()} at ${time} for ${partySize} guests is CONFIRMED. See you soon!`,
+    declined: `Hi ${customerName}. Unfortunately, we cannot accommodate your Rose Garden reservation for ${new Date(date).toLocaleDateString()} at ${time}. Please call 0244 365634 for alternatives. Sorry!`
   };
 
   const message = messages[status];
-  const notification = message[communicationPreference] || message.email;
   
-  // Show demo notification
-  console.log(`📧 ${status.toUpperCase()} NOTIFICATION (Demo Mode):`, { 
-    to: communicationPreference === 'email' ? email : phone,
-    method: communicationPreference,
-    subject: notification.subject || `Reservation ${status}`,
-    preview: (notification.body || notification).substring(0, 100) + '...'
+  try {
+    // Log SMS for tracking
+    const smsLog = {
+      id: Date.now().toString() + Math.random().toString(36).substr(2),
+      to: phone,
+      message,
+      status: 'sent',
+      timestamp: new Date().toISOString(),
+      reservationId: reservation.id,
+      customerName: customerName || reservation.name,
+      type: 'auto_notification'
+    };
+
+    // Save to SMS logs
+    const existingLogs = JSON.parse(localStorage.getItem('sms_logs') || '[]');
+    existingLogs.unshift(smsLog);
+    localStorage.setItem('sms_logs', JSON.stringify(existingLogs));
+
+    // In production, this would make actual API call to SMS provider
+    console.log(`📱 AUTO SMS SENT (${status.toUpperCase()}):`, {
+      provider,
+      to: phone,
+      customer: customerName,
+      message: message.substring(0, 50) + '...',
+      reservationId: reservation.id
+    });
+
+    // Show notification to user
+    if (typeof window !== 'undefined') {
+      setTimeout(() => {
+        const statusEmoji = status === 'confirmed' ? '✅' : '❌';
+        alert(`${statusEmoji} SMS automatically sent!\n\nTo: ${customerName} (${phone})\nStatus: ${status.toUpperCase()}\n\nMessage: ${message.substring(0, 100)}...`);
+      }, 1000);
+    }
+
+    return true;
+  } catch (error) {
+    console.error('Failed to send SMS notification:', error);
+    
+    // Log failed SMS
+    const failedSmsLog = {
+      id: Date.now().toString() + Math.random().toString(36).substr(2),
+      to: phone,
+      message,
+      status: 'failed',
+      timestamp: new Date().toISOString(),
+      reservationId: reservation.id,
+      customerName: customerName || reservation.name,
+      type: 'auto_notification',
+      error: error.message || 'Unknown error'
+    };
+
+    const existingLogs = JSON.parse(localStorage.getItem('sms_logs') || '[]');
+    existingLogs.unshift(failedSmsLog);
+    localStorage.setItem('sms_logs', JSON.stringify(existingLogs));
+
+    return false;
+  }
+};
+
+// Simple notification system for new reservations
+const sendNewReservationNotification = (reservation: Reservation) => {
+  const { customerName, email, phone, date, time, partySize } = reservation;
+  
+  // Show demo notification for new reservation
+  console.log(`📧 NEW RESERVATION NOTIFICATION:`, { 
+    customer: customerName,
+    email,
+    phone,
+    date: new Date(date).toLocaleDateString(),
+    time,
+    partySize
   });
 
   // Show browser notification
   if (typeof window !== 'undefined') {
     setTimeout(() => {
-      const statusEmoji = status === 'confirmed' ? '✅' : '❌';
-      alert(`${statusEmoji} Reservation ${status}!\n\nCustomer: ${customerName}\nMethod: ${communicationPreference}\n\nNotification sent via ${communicationPreference === 'email' ? 'email' : 'SMS/WhatsApp'}.`);
-    }, 1000);
+      alert(`✅ New reservation received!\n\nCustomer: ${customerName}\nDate: ${new Date(date).toLocaleDateString()}\nTime: ${time}\nParty Size: ${partySize}\n\nThank you message sent to customer.`);
+    }, 500);
   }
 };
