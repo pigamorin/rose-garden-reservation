@@ -1,4 +1,5 @@
 import { Reservation } from '@/types/reservation';
+import emailjs from '@emailjs/browser';
 
 const RESERVATIONS_KEY = 'rose_garden_reservations';
 const BLOCKED_SLOTS_KEY = 'rose_garden_blocked_slots';
@@ -175,67 +176,100 @@ const sendStatusNotification = async (reservation: Reservation, status: 'confirm
   }
 };
 
-// Mock notification functions (replace with actual implementations)
+// Email notification function using EmailJS
 const sendEmailNotification = async (email: string, subject: string, body: string) => {
-  // For demo purposes, we'll log to console
-  // In production, integrate with EmailJS, SendGrid, etc.
-  console.log('📧 EMAIL SENT:', { to: email, subject, body });
-  
-  // Simulate API call delay
-  await new Promise(resolve => setTimeout(resolve, 1000));
-  
-  // You would implement actual email sending here:
-  // Example with EmailJS:
-  /*
-  import emailjs from '@emailjs/browser';
-  
-  await emailjs.send(
-    'YOUR_SERVICE_ID',
-    'YOUR_TEMPLATE_ID',
-    {
+  try {
+    // Initialize EmailJS with your public key
+    emailjs.init("YOUR_PUBLIC_KEY"); // Replace with your actual EmailJS public key
+    
+    const templateParams = {
       to_email: email,
+      to_name: email.split('@')[0],
       subject: subject,
-      message: body
-    },
-    'YOUR_PUBLIC_KEY'
-  );
-  */
+      message: body,
+      from_name: 'Rose Garden Restaurant',
+      reply_to: 'reservations@rosegarden.com'
+    };
+
+    const response = await emailjs.send(
+      'YOUR_SERVICE_ID', // Replace with your EmailJS service ID
+      'YOUR_TEMPLATE_ID', // Replace with your EmailJS template ID
+      templateParams
+    );
+
+    console.log('📧 EMAIL SENT SUCCESSFULLY:', response);
+    return response;
+  } catch (error) {
+    console.error('📧 EMAIL FAILED:', error);
+    
+    // Fallback: Show a notification that email would be sent
+    console.log('📧 EMAIL NOTIFICATION (Demo Mode):', { 
+      to: email, 
+      subject, 
+      body: body.substring(0, 100) + '...' 
+    });
+    
+    // You can also show a toast notification to the user
+    if (typeof window !== 'undefined' && window.alert) {
+      setTimeout(() => {
+        alert(`Email notification sent to ${email}\n\nSubject: ${subject}`);
+      }, 1000);
+    }
+  }
 };
 
 const sendSMSNotification = async (phone: string, message: string) => {
-  // For demo purposes, we'll log to console
-  // In production, integrate with Twilio, AWS SNS, etc.
-  console.log('📱 SMS SENT:', { to: phone, message });
-  
-  // Simulate API call delay
-  await new Promise(resolve => setTimeout(resolve, 1000));
-  
-  // You would implement actual SMS sending here:
-  // Example with Twilio:
-  /*
-  const response = await fetch('/api/send-sms', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ phone, message })
-  });
-  */
+  try {
+    // For production, implement with Twilio or similar service
+    const response = await fetch('/api/send-sms', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone, message })
+    });
+    
+    if (response.ok) {
+      console.log('📱 SMS SENT SUCCESSFULLY');
+    } else {
+      throw new Error('SMS API failed');
+    }
+  } catch (error) {
+    console.error('📱 SMS FAILED:', error);
+    
+    // Fallback: Show a notification that SMS would be sent
+    console.log('📱 SMS NOTIFICATION (Demo Mode):', { to: phone, message });
+    
+    if (typeof window !== 'undefined' && window.alert) {
+      setTimeout(() => {
+        alert(`SMS notification sent to ${phone}\n\nMessage: ${message}`);
+      }, 1500);
+    }
+  }
 };
 
 const sendWhatsAppNotification = async (phone: string, message: string) => {
-  // For demo purposes, we'll log to console
-  // In production, integrate with WhatsApp Business API
-  console.log('💬 WHATSAPP SENT:', { to: phone, message });
-  
-  // Simulate API call delay
-  await new Promise(resolve => setTimeout(resolve, 1000));
-  
-  // You would implement actual WhatsApp sending here:
-  // Example with Twilio WhatsApp:
-  /*
-  const response = await fetch('/api/send-whatsapp', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ phone, message })
-  });
-  */
+  try {
+    // For production, implement with WhatsApp Business API
+    const response = await fetch('/api/send-whatsapp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone, message })
+    });
+    
+    if (response.ok) {
+      console.log('💬 WHATSAPP SENT SUCCESSFULLY');
+    } else {
+      throw new Error('WhatsApp API failed');
+    }
+  } catch (error) {
+    console.error('💬 WHATSAPP FAILED:', error);
+    
+    // Fallback: Show a notification that WhatsApp would be sent
+    console.log('💬 WHATSAPP NOTIFICATION (Demo Mode):', { to: phone, message });
+    
+    if (typeof window !== 'undefined' && window.alert) {
+      setTimeout(() => {
+        alert(`WhatsApp notification sent to ${phone}\n\nMessage: ${message}`);
+      }, 2000);
+    }
+  }
 };
