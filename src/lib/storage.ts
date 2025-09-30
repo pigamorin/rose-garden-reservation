@@ -1,5 +1,5 @@
 import { Reservation } from '@/types/reservation';
-import { sendReservationEmail } from './emailService';
+import { sendSimpleEmail, sendMailtoEmail } from './simpleEmailService';
 
 const RESERVATIONS_KEY = 'rose_garden_reservations';
 const BLOCKED_SLOTS_KEY = 'rose_garden_blocked_slots';
@@ -133,63 +133,49 @@ export const isSlotBlocked = (date: string, time: string): boolean => {
   return blockedSlots.some(slot => slot.date === date && slot.time === time);
 };
 
-// Enhanced notification system with automatic email/SMS sending
+// SIMPLE EMAIL NOTIFICATION SYSTEM
 const sendStatusNotification = async (reservation: Reservation, status: 'confirmed' | 'declined') => {
   const { communicationPreference, customerName, email, phone, date, time, partySize } = reservation;
   
-  console.log(`📧 ${status.toUpperCase()} NOTIFICATION TRIGGERED:`, { 
-    to: communicationPreference === 'email' ? email : phone,
-    method: communicationPreference || 'email',
+  console.log(`📧 ${status.toUpperCase()} NOTIFICATION:`, { 
     customer: customerName,
+    email,
     status,
-    hasEmail: !!email,
-    hasPhone: !!phone
+    preference: communicationPreference
   });
 
-  // Send automatic email if customer prefers email OR no preference is set (default to email)
-  if ((!communicationPreference || communicationPreference === 'email') && email) {
+  // Send email if customer has email and prefers email (or no preference)
+  if (email && (!communicationPreference || communicationPreference === 'email')) {
+    const reservationDetails = {
+      id: reservation.id,
+      date: new Date(date).toLocaleDateString(),
+      time: time,
+      partySize: partySize,
+      status: status
+    };
+
+    // Try simple EmailJS first
     try {
-      console.log('🔄 Attempting to send automatic email...');
-      
-      const emailData = {
-        to_email: email,
-        to_name: customerName || 'Customer',
-        reservation_id: reservation.id,
-        date: new Date(date).toLocaleDateString(),
-        time: time,
-        party_size: partySize,
-        status: status,
-        restaurant_name: 'Rose Garden Restaurant',
-        restaurant_phone: '0244 365634',
-        restaurant_email: 'info@rosegarden.com'
-      };
-
-      console.log('📧 Email data prepared:', emailData);
-
-      const emailSent = await sendReservationEmail(emailData);
-      
+      const emailSent = await sendSimpleEmail(email, customerName || 'Customer', reservationDetails);
       if (emailSent) {
-        console.log('✅ Automatic email sent successfully');
-      } else {
-        console.log('❌ Failed to send automatic email');
+        console.log('✅ Simple email sent successfully');
+        return;
       }
     } catch (error) {
-      console.error('❌ Error sending automatic email:', error);
+      console.error('❌ Simple email failed:', error);
     }
-  } else {
-    console.log('📧 Skipping email notification:', {
-      reason: !email ? 'No email address' : 'Customer prefers ' + communicationPreference,
-      communicationPreference,
-      hasEmail: !!email
-    });
+
+    // Fallback to mailto (always works)
+    console.log('📧 Falling back to mailto...');
+    sendMailtoEmail(email, customerName || 'Customer', reservationDetails);
   }
 
-  // Send automatic SMS if customer prefers SMS
+  // Send SMS if customer prefers SMS
   if (communicationPreference === 'sms' && phone) {
     sendSMSStatusNotification(reservation, status);
   }
 
-  // Show general notification for WhatsApp
+  // Show WhatsApp notification
   if (communicationPreference === 'whatsapp' && phone) {
     if (typeof window !== 'undefined') {
       setTimeout(() => {
@@ -200,7 +186,7 @@ const sendStatusNotification = async (reservation: Reservation, status: 'confirm
   }
 };
 
-// SMS Functions
+// SMS Functions (existing code)
 const sendSMSStatusNotification = async (reservation: Reservation, status: 'confirmed' | 'declined') => {
   const provider = localStorage.getItem('sms_provider');
   if (!provider) {
