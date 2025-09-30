@@ -13,94 +13,116 @@ export interface EmailData {
   restaurant_email: string;
 }
 
-// Initialize EmailJS with public key from localStorage
-const initializeEmailJS = () => {
+// Initialize EmailJS with public key
+const initEmailJS = () => {
   const publicKey = localStorage.getItem('emailjs_public_key') || localStorage.getItem('emailjs_user_id');
-  if (publicKey) {
+  if (publicKey && publicKey !== 'your_public_key') {
     emailjs.init(publicKey);
+    console.log('EmailJS initialized with public key:', publicKey.substring(0, 10) + '...');
   }
 };
 
 export const sendReservationEmail = async (emailData: EmailData): Promise<boolean> => {
   try {
-    // Initialize EmailJS
-    initializeEmailJS();
-
     // Get configuration from localStorage
-    const serviceId = localStorage.getItem('emailjs_service_id');
-    const templateId = localStorage.getItem('emailjs_template_id');
+    const serviceId = localStorage.getItem('emailjs_service_id') || 'service_emdyfkx';
+    const templateId = localStorage.getItem('emailjs_template_id') || 'template_reservation';
     const publicKey = localStorage.getItem('emailjs_public_key') || localStorage.getItem('emailjs_user_id');
 
-    console.log('EmailJS Configuration:', {
-      serviceId: serviceId ? serviceId.substring(0, 10) + '...' : 'NOT SET',
-      templateId: templateId ? templateId.substring(0, 10) + '...' : 'NOT SET',
-      publicKey: publicKey ? publicKey.substring(0, 10) + '...' : 'NOT SET'
+    console.log('EmailJS Configuration Check:', {
+      serviceId: serviceId ? serviceId : 'MISSING',
+      templateId: templateId ? templateId : 'MISSING',
+      publicKey: publicKey ? publicKey.substring(0, 10) + '...' : 'MISSING',
+      toEmail: emailData.to_email
     });
 
-    if (!serviceId || !templateId || !publicKey) {
-      console.error('EmailJS not configured properly');
+    if (!serviceId || !templateId || !publicKey || publicKey === 'your_public_key') {
+      console.error('❌ EmailJS not configured properly');
       
-      // Show configuration error
       if (typeof window !== 'undefined') {
         setTimeout(() => {
-          alert('❌ EmailJS not configured!\n\nPlease go to Email Setup tab and configure:\n- Service ID\n- Template ID\n- Public Key\n\nThen try again.');
+          alert('❌ EmailJS not configured!\n\nPlease go to Email Setup tab and configure:\n- Service ID: service_emdyfkx\n- Template ID: (create in EmailJS dashboard)\n- Public Key: (from EmailJS dashboard)\n\nThen try again.');
         }, 500);
       }
       
       return false;
     }
 
-    // Prepare email template parameters
+    // Initialize EmailJS
+    initEmailJS();
+
+    // Prepare template parameters for EmailJS
     const templateParams = {
+      // Standard EmailJS parameters
       to_email: emailData.to_email,
       to_name: emailData.to_name,
-      customer_name: emailData.to_name,
+      from_name: emailData.restaurant_name,
+      reply_to: emailData.restaurant_email,
+      
+      // Email content
+      subject: getEmailSubject(emailData.status),
+      message: getEmailMessage(emailData),
+      
+      // Reservation details
       reservation_id: emailData.reservation_id,
       date: emailData.date,
       time: emailData.time,
       party_size: emailData.party_size.toString(),
       status: emailData.status,
+      
+      // Restaurant info
       restaurant_name: emailData.restaurant_name,
       restaurant_phone: emailData.restaurant_phone,
       restaurant_email: emailData.restaurant_email,
-      subject: getEmailSubject(emailData.status),
-      message: getEmailMessage(emailData)
+      
+      // Additional variables for template flexibility
+      customer_name: emailData.to_name,
+      customer_email: emailData.to_email
     };
 
-    console.log('Sending email with EmailJS:', {
-      serviceId,
-      templateId,
+    console.log('📧 Sending email via EmailJS:', {
+      service: serviceId,
+      template: templateId,
       to: emailData.to_email,
       customer: emailData.to_name,
-      status: emailData.status
+      status: emailData.status,
+      templateParams: Object.keys(templateParams)
     });
 
     // Send email using EmailJS
-    const response = await emailjs.send(
-      serviceId,
-      templateId,
-      templateParams,
-      publicKey
-    );
+    const response = await emailjs.send(serviceId, templateId, templateParams, publicKey);
 
-    console.log('Email sent successfully:', response);
+    console.log('✅ Email sent successfully:', response);
     
     // Show success notification
     if (typeof window !== 'undefined') {
       setTimeout(() => {
-        alert(`✅ Email sent successfully!\n\nTo: ${emailData.to_email}\nCustomer: ${emailData.to_name}\nStatus: ${emailData.status.toUpperCase()}\n\nEmail delivered via EmailJS.`);
+        alert(`✅ Email sent successfully!\n\nTo: ${emailData.to_email}\nCustomer: ${emailData.to_name}\nStatus: ${emailData.status.toUpperCase()}\n\nEmailJS Response: ${response.status} - ${response.text}`);
       }, 500);
     }
-    
+
     return true;
 
   } catch (error) {
-    console.error('Failed to send email:', error);
+    console.error('❌ Failed to send email:', error);
     
-    // Show detailed error
+    // Show detailed error notification
     if (typeof window !== 'undefined') {
       setTimeout(() => {
-        alert(`❌ Email failed to send!\n\nError: ${error.message || 'Unknown error'}\n\nPlease check your EmailJS configuration in the Email Setup tab.`);
+        let errorMessage = `❌ Email failed to send!\n\nTo: ${emailData.to_email}\nCustomer: ${emailData.to_name}\n\n`;
+        
+        if (error.status) {
+          errorMessage += `Error Code: ${error.status}\n`;
+        }
+        if (error.text) {
+          errorMessage += `Error: ${error.text}\n`;
+        } else if (error.message) {
+          errorMessage += `Error: ${error.message}\n`;
+        }
+        
+        errorMessage += '\nPlease check:\n1. EmailJS configuration in Email Setup tab\n2. Template exists in EmailJS dashboard\n3. Service is active';
+        
+        alert(errorMessage);
       }, 500);
     }
     
@@ -125,8 +147,8 @@ const getEmailSubject = (status: string): string => {
   }
 };
 
-const getEmailMessage = (data: EmailData): string => {
-  const { to_name, date, time, party_size, status, restaurant_phone } = data;
+const getEmailMessage = (emailData: EmailData): string => {
+  const { to_name, date, time, party_size, status, restaurant_phone } = emailData;
   
   switch (status) {
     case 'confirmed':
@@ -195,7 +217,7 @@ export const isEmailConfigured = (): boolean => {
   const templateId = localStorage.getItem('emailjs_template_id');
   const publicKey = localStorage.getItem('emailjs_public_key') || localStorage.getItem('emailjs_user_id');
   
-  return !!(serviceId && templateId && publicKey);
+  return !!(serviceId && templateId && publicKey && publicKey !== 'your_public_key');
 };
 
 // Get configuration status
@@ -207,26 +229,20 @@ export const getEmailStatus = (): string => {
   }
 };
 
-// Function to send automatic emails when reservation status changes
-export const sendAutomaticEmail = async (reservation: any, status: 'confirmed' | 'declined'): Promise<boolean> => {
-  // Check if customer prefers email communication
-  if (reservation.communicationPreference && reservation.communicationPreference !== 'email') {
-    console.log('Customer prefers', reservation.communicationPreference, '- skipping email');
-    return false;
-  }
-
-  const emailData: EmailData = {
-    to_email: reservation.email,
-    to_name: reservation.customerName || reservation.name,
-    reservation_id: reservation.id,
-    date: new Date(reservation.date).toLocaleDateString(),
-    time: reservation.time,
-    party_size: reservation.partySize,
-    status: status,
+// Test email function
+export const sendTestEmail = async (testEmail: string): Promise<boolean> => {
+  const testData: EmailData = {
+    to_email: testEmail,
+    to_name: 'Test User',
+    reservation_id: 'TEST-' + Date.now(),
+    date: new Date().toLocaleDateString(),
+    time: '7:00 PM',
+    party_size: 2,
+    status: 'confirmed',
     restaurant_name: 'Rose Garden Restaurant',
     restaurant_phone: '0244 365634',
     restaurant_email: 'info@rosegarden.com'
   };
 
-  return await sendReservationEmail(emailData);
+  return await sendReservationEmail(testData);
 };
