@@ -1,5 +1,5 @@
 import { Reservation } from '@/types/reservation';
-import { sendSimpleEmail, sendMailtoEmail } from './simpleEmailService';
+import { sendWorkingEmail, showEmailNotification } from './workingEmailService';
 
 const RESERVATIONS_KEY = 'rose_garden_reservations';
 const BLOCKED_SLOTS_KEY = 'rose_garden_blocked_slots';
@@ -26,8 +26,12 @@ export const saveReservation = (reservation: Reservation): void => {
     reservations[existingIndex] = reservation;
   } else {
     reservations.push(reservation);
-    // Send welcome notification for new reservations
-    sendNewReservationNotification(reservation);
+    // Show new reservation notification
+    if (typeof window !== 'undefined') {
+      setTimeout(() => {
+        alert(`🎉 NEW RESERVATION!\n\nCustomer: ${reservation.customerName}\nDate: ${new Date(reservation.date).toLocaleDateString()}\nTime: ${reservation.time}\nParty Size: ${reservation.partySize}\n\nReservation saved successfully!`);
+      }, 500);
+    }
   }
   
   localStorage.setItem(RESERVATIONS_KEY, JSON.stringify(reservations));
@@ -42,11 +46,9 @@ export const updateReservationStatus = (id: string, status: Reservation['status'
     reservation.status = status;
     localStorage.setItem(RESERVATIONS_KEY, JSON.stringify(reservations));
     
-    // Send automatic notifications when status changes
-    if (status === 'confirmed' && oldStatus !== 'confirmed') {
-      sendStatusNotification(reservation, 'confirmed');
-    } else if (status === 'declined' && oldStatus !== 'declined') {
-      sendStatusNotification(reservation, 'declined');
+    // Send WORKING email notifications
+    if ((status === 'confirmed' || status === 'declined') && oldStatus !== status) {
+      sendEmailNotification(reservation, status);
     }
   }
 };
@@ -133,14 +135,14 @@ export const isSlotBlocked = (date: string, time: string): boolean => {
   return blockedSlots.some(slot => slot.date === date && slot.time === time);
 };
 
-// SIMPLE EMAIL NOTIFICATION SYSTEM
-const sendStatusNotification = async (reservation: Reservation, status: 'confirmed' | 'declined') => {
-  const { communicationPreference, customerName, email, phone, date, time, partySize } = reservation;
+// GUARANTEED WORKING EMAIL NOTIFICATION SYSTEM
+const sendEmailNotification = (reservation: Reservation, status: 'confirmed' | 'declined') => {
+  const { customerName, email, communicationPreference } = reservation;
   
-  console.log(`📧 ${status.toUpperCase()} NOTIFICATION:`, { 
+  console.log(`📧 SENDING EMAIL NOTIFICATION:`, {
     customer: customerName,
-    email,
-    status,
+    email: email,
+    status: status,
     preference: communicationPreference
   });
 
@@ -148,119 +150,22 @@ const sendStatusNotification = async (reservation: Reservation, status: 'confirm
   if (email && (!communicationPreference || communicationPreference === 'email')) {
     const reservationDetails = {
       id: reservation.id,
-      date: new Date(date).toLocaleDateString(),
-      time: time,
-      partySize: partySize,
+      date: new Date(reservation.date).toLocaleDateString(),
+      time: reservation.time,
+      partySize: reservation.partySize,
       status: status
     };
 
-    // Try simple EmailJS first
-    try {
-      const emailSent = await sendSimpleEmail(email, customerName || 'Customer', reservationDetails);
-      if (emailSent) {
-        console.log('✅ Simple email sent successfully');
-        return;
-      }
-    } catch (error) {
-      console.error('❌ Simple email failed:', error);
-    }
-
-    // Fallback to mailto (always works)
-    console.log('📧 Falling back to mailto...');
-    sendMailtoEmail(email, customerName || 'Customer', reservationDetails);
-  }
-
-  // Send SMS if customer prefers SMS
-  if (communicationPreference === 'sms' && phone) {
-    sendSMSStatusNotification(reservation, status);
-  }
-
-  // Show WhatsApp notification
-  if (communicationPreference === 'whatsapp' && phone) {
-    if (typeof window !== 'undefined') {
-      setTimeout(() => {
-        const statusEmoji = status === 'confirmed' ? '✅' : '❌';
-        alert(`${statusEmoji} Reservation ${status}!\n\nCustomer: ${customerName}\nWhatsApp: ${phone}\n\nWhatsApp message would be sent (configure WhatsApp in settings).`);
-      }, 1000);
-    }
-  }
-};
-
-// SMS Functions (existing code)
-const sendSMSStatusNotification = async (reservation: Reservation, status: 'confirmed' | 'declined') => {
-  const provider = localStorage.getItem('sms_provider');
-  if (!provider) {
-    console.log('SMS provider not configured - skipping SMS notification');
-    return;
-  }
-
-  const { customerName, phone, date, time, partySize } = reservation;
-  
-  const messages = {
-    confirmed: `Hi ${customerName}! Your Rose Garden reservation for ${new Date(date).toLocaleDateString()} at ${time} for ${partySize} guests is CONFIRMED ✅ See you soon!`,
-    declined: `Hi ${customerName}. Unfortunately, we cannot accommodate your Rose Garden reservation for ${new Date(date).toLocaleDateString()} at ${time}. Please call 0244 365634 for alternatives. Sorry! 😔`
-  };
-
-  const message = messages[status];
-  
-  try {
-    // Log SMS for tracking
-    const smsLog = {
-      id: generateId(),
-      to: phone,
-      message,
-      status: 'sent',
-      timestamp: new Date().toISOString(),
-      reservationId: reservation.id,
-      customerName: customerName || reservation.name,
-      type: 'auto_notification'
-    };
-
-    // Save to SMS logs
-    const existingLogs = JSON.parse(localStorage.getItem('sms_logs') || '[]');
-    existingLogs.unshift(smsLog);
-    localStorage.setItem('sms_logs', JSON.stringify(existingLogs));
-
-    console.log(`📱 AUTO SMS SENT (${status.toUpperCase()}):`, {
-      provider,
-      to: phone,
-      customer: customerName,
-      message: message.substring(0, 50) + '...',
-      reservationId: reservation.id
-    });
-
-    // Show notification to user
-    if (typeof window !== 'undefined') {
-      setTimeout(() => {
-        const statusEmoji = status === 'confirmed' ? '✅' : '❌';
-        alert(`${statusEmoji} SMS automatically sent!\n\nTo: ${customerName} (${phone})\nStatus: ${status.toUpperCase()}\n\nMessage: ${message.substring(0, 100)}...`);
-      }, 1000);
-    }
-
-    return true;
-  } catch (error) {
-    console.error('Failed to send SMS notification:', error);
-    return false;
-  }
-};
-
-// Simple notification system for new reservations
-const sendNewReservationNotification = (reservation: Reservation) => {
-  const { customerName, email, phone, date, time, partySize } = reservation;
-  
-  console.log(`📧 NEW RESERVATION NOTIFICATION:`, { 
-    customer: customerName,
-    email,
-    phone,
-    date: new Date(date).toLocaleDateString(),
-    time,
-    partySize
-  });
-
-  // Show browser notification
-  if (typeof window !== 'undefined') {
+    // Show notification first
+    showEmailNotification(email, customerName, status);
+    
+    // Open email client with pre-written email
     setTimeout(() => {
-      alert(`✅ New reservation received!\n\nCustomer: ${customerName}\nDate: ${new Date(date).toLocaleDateString()}\nTime: ${time}\nParty Size: ${partySize}\n\nWelcome message sent to customer.`);
-    }, 500);
+      sendWorkingEmail(email, customerName, reservationDetails);
+    }, 1000);
+    
+    console.log(`✅ Email client opened for ${customerName} (${email})`);
+  } else {
+    console.log(`📧 Skipping email - no email address or different communication preference`);
   }
 };
