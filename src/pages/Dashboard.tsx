@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { CalendarIcon, ClockIcon, UsersIcon, TrendingUpIcon, CheckCircleIcon, XCircleIcon, SettingsIcon, UserCogIcon, ArrowLeftIcon, LogOutIcon, MailIcon, MessageCircleIcon, PhoneIcon } from 'lucide-react';
+import { CalendarIcon, ClockIcon, UsersIcon, TrendingUpIcon, CheckCircleIcon, XCircleIcon, SettingsIcon, UserCogIcon, ArrowLeftIcon, LogOutIcon, MailIcon, MessageSquareIcon, PhoneIcon, SendIcon } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { getReservations, updateReservationStatus, updateReservationAttendance } from '@/lib/storage';
 import { getCurrentUser, hasPermission } from '@/lib/userStorage';
@@ -16,6 +16,7 @@ import SlotManagement from '@/components/SlotManagement';
 import EmailSetup from '@/components/EmailSetup';
 import WhatsAppSetup from '@/components/WhatsAppSetup';
 import SMSSetup from '@/components/SMSSetup';
+import SMSIntegration from '@/components/SMSIntegration';
 
 export default function Dashboard() {
   const [reservations, setReservations] = useState<Reservation[]>([]);
@@ -88,8 +89,9 @@ export default function Dashboard() {
     { id: 'slots', label: 'Slot Management', icon: ClockIcon, permission: 'manage_slots' },
     { id: 'users', label: 'User Management', icon: UserCogIcon, permission: 'manage_users' },
     { id: 'email', label: 'Email Setup', icon: MailIcon, permission: 'manage_users' },
-    { id: 'whatsapp', label: 'WhatsApp Setup', icon: MessageCircleIcon, permission: 'manage_users' },
-    { id: 'sms', label: 'SMS Setup', icon: PhoneIcon, permission: 'manage_users' }
+    { id: 'whatsapp', label: 'WhatsApp Setup', icon: MessageSquareIcon, permission: 'manage_users' },
+    { id: 'sms-setup', label: 'SMS Setup', icon: PhoneIcon, permission: 'manage_users' },
+    { id: 'sms-integration', label: 'SMS Integration', icon: SendIcon, permission: 'manage_users' }
   ].filter(tab => hasPermission(tab.permission));
 
   console.log('Dashboard - Available tabs:', availableTabs.map(t => t.id));
@@ -178,7 +180,7 @@ export default function Dashboard() {
 
         {/* Main Content Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-3 lg:grid-cols-7">
+          <TabsList className="grid w-full grid-cols-4 lg:grid-cols-8">
             {availableTabs.map(tab => {
               const Icon = tab.icon;
               return (
@@ -262,8 +264,14 @@ export default function Dashboard() {
           )}
 
           {hasPermission('manage_users') && (
-            <TabsContent value="sms">
+            <TabsContent value="sms-setup">
               <SMSSetup />
+            </TabsContent>
+          )}
+
+          {hasPermission('manage_users') && (
+            <TabsContent value="sms-integration">
+              <SMSIntegration />
             </TabsContent>
           )}
         </Tabs>
