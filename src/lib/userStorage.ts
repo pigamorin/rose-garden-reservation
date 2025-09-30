@@ -108,6 +108,12 @@ export const logoutUser = (): void => {
 export const hasPermission = (permissionId: string): boolean => {
   const currentUser = getCurrentUser();
   if (!currentUser) return false;
+  
+  // Managers automatically get all permissions
+  if (currentUser.role === 'manager') {
+    return true;
+  }
+  
   return currentUser.permissions.some(p => p.id === permissionId);
 };
 

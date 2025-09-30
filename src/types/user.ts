@@ -1,3 +1,9 @@
+export interface Permission {
+  id: string;
+  name: string;
+  description: string;
+}
+
 export interface User {
   id: string;
   username: string;
@@ -12,23 +18,57 @@ export interface User {
   lastLogin?: string;
 }
 
-export interface Permission {
-  id: string;
-  name: string;
-  description: string;
-}
-
 export const AVAILABLE_PERMISSIONS: Permission[] = [
-  { id: 'view_reservations', name: 'View Reservations', description: 'Can view all reservations' },
-  { id: 'manage_reservations', name: 'Manage Reservations', description: 'Can accept/decline reservations' },
-  { id: 'mark_attendance', name: 'Mark Attendance', description: 'Can mark customer attendance' },
-  { id: 'view_analytics', name: 'View Analytics', description: 'Can view analytics dashboard' },
-  { id: 'export_data', name: 'Export Data', description: 'Can download CSV reports' },
-  { id: 'manage_users', name: 'Manage Users', description: 'Can create and manage user accounts' },
-  { id: 'view_all_data', name: 'View All Data', description: 'Can see data from all users (manager only)' }
+  {
+    id: 'view_reservations',
+    name: 'View Reservations',
+    description: 'Can view all reservations in the system'
+  },
+  {
+    id: 'manage_reservations',
+    name: 'Manage Reservations',
+    description: 'Can accept, decline, and modify reservations'
+  },
+  {
+    id: 'mark_attendance',
+    name: 'Mark Attendance',
+    description: 'Can mark customers as attended or no-show'
+  },
+  {
+    id: 'view_analytics',
+    name: 'View Analytics',
+    description: 'Can access analytics and reports dashboard'
+  },
+  {
+    id: 'manage_users',
+    name: 'Manage Users',
+    description: 'Can create, edit, and delete user accounts'
+  },
+  {
+    id: 'manage_slots',
+    name: 'Manage Time Slots',
+    description: 'Can block and unblock time slots'
+  },
+  {
+    id: 'system_admin',
+    name: 'System Administration',
+    description: 'Full system access and configuration'
+  }
 ];
 
-export const ROLE_PERMISSIONS = {
-  manager: ['view_reservations', 'manage_reservations', 'mark_attendance', 'view_analytics', 'export_data', 'manage_users', 'view_all_data'],
-  staff: ['view_reservations', 'manage_reservations', 'mark_attendance']
+export const ROLE_PERMISSIONS: Record<'manager' | 'staff', string[]> = {
+  manager: [
+    'view_reservations',
+    'manage_reservations', 
+    'mark_attendance',
+    'view_analytics',
+    'manage_users',
+    'manage_slots',
+    'system_admin'
+  ],
+  staff: [
+    'view_reservations',
+    'manage_reservations',
+    'mark_attendance'
+  ]
 };
