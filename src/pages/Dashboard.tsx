@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { CalendarIcon, ClockIcon, UsersIcon, TrendingUpIcon, CheckCircleIcon, XCircleIcon, SettingsIcon, UserCogIcon } from 'lucide-react';
+import { CalendarIcon, ClockIcon, UsersIcon, TrendingUpIcon, CheckCircleIcon, XCircleIcon, SettingsIcon, UserCogIcon, ArrowLeftIcon, LogOutIcon } from 'lucide-react';
 import { getReservations, updateReservationStatus, updateReservationAttendance } from '@/lib/storage';
 import { getCurrentUser, hasPermission } from '@/lib/userStorage';
 import { Reservation } from '@/types/reservation';
@@ -12,6 +12,7 @@ import ReservationTable from '@/components/ReservationTable';
 import AnalyticsDashboard from '@/components/AnalyticsDashboard';
 import UserManagement from '@/components/UserManagement';
 import SlotManagement from '@/components/SlotManagement';
+import { Link } from 'react-router-dom';
 
 export default function Dashboard() {
   const [reservations, setReservations] = useState<Reservation[]>([]);
@@ -42,6 +43,11 @@ export default function Dashboard() {
   const handleAttendanceChange = (id: string, attendance: 'attended' | 'no-show') => {
     updateReservationAttendance(id, attendance);
     loadReservations();
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('currentUser');
+    window.location.href = '/';
   };
 
   const getStats = () => {
@@ -92,17 +98,21 @@ export default function Dashboard() {
               <p className="text-gray-600">Welcome back, {currentUser.username}!</p>
             </div>
             <div className="flex items-center gap-4">
+              <Link to="/">
+                <Button variant="outline" className="flex items-center gap-2">
+                  <ArrowLeftIcon className="h-4 w-4" />
+                  Back to Reservations
+                </Button>
+              </Link>
               <Badge variant="outline" className="flex items-center gap-1">
                 <SettingsIcon className="h-3 w-3" />
                 {currentUser.role}
               </Badge>
               <Button 
                 variant="outline" 
-                onClick={() => {
-                  localStorage.removeItem('currentUser');
-                  window.location.href = '/login';
-                }}
+                onClick={handleLogout}
               >
+                <LogOutIcon className="h-4 w-4 mr-2" />
                 Logout
               </Button>
             </div>
