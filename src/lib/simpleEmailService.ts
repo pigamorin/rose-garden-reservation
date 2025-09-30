@@ -1,13 +1,13 @@
 import emailjs from '@emailjs/browser';
 
-// Simple, direct EmailJS implementation
+// EmailJS configuration with your public key
 const EMAILJS_CONFIG = {
   serviceId: 'service_emdyfkx', // Your working service
-  publicKey: 'YOUR_PUBLIC_KEY_HERE', // Replace with your actual public key
-  templateId: 'template_simple' // We'll create a simple template
+  publicKey: '2fKyEzMJhgw-SDMp2', // Your actual public key
+  templateId: 'template_simple' // Simple template we'll create
 };
 
-// Initialize EmailJS once
+// Initialize EmailJS with your public key
 emailjs.init(EMAILJS_CONFIG.publicKey);
 
 export const sendSimpleEmail = async (
@@ -22,7 +22,7 @@ export const sendSimpleEmail = async (
   }
 ): Promise<boolean> => {
   try {
-    console.log('📧 Sending simple email to:', customerEmail);
+    console.log('📧 Sending email to:', customerEmail);
 
     const emailContent = reservationDetails.status === 'confirmed' 
       ? `Great news! Your reservation has been CONFIRMED.
@@ -58,7 +58,12 @@ Rose Garden Team`;
       reply_to: 'info@rosegarden.com'
     };
 
-    console.log('📧 Template params:', templateParams);
+    console.log('📧 Sending with EmailJS:', {
+      service: EMAILJS_CONFIG.serviceId,
+      template: EMAILJS_CONFIG.templateId,
+      to: customerEmail,
+      customer: customerName
+    });
 
     const response = await emailjs.send(
       EMAILJS_CONFIG.serviceId,
@@ -70,7 +75,7 @@ Rose Garden Team`;
     console.log('✅ Email sent successfully:', response);
     
     // Show success notification
-    alert(`✅ Email sent successfully!\n\nTo: ${customerEmail}\nCustomer: ${customerName}\nStatus: ${reservationDetails.status.toUpperCase()}`);
+    alert(`✅ Email sent successfully!\n\nTo: ${customerEmail}\nCustomer: ${customerName}\nStatus: ${reservationDetails.status.toUpperCase()}\n\nEmailJS Response: ${response.status}`);
     
     return true;
 
@@ -78,13 +83,13 @@ Rose Garden Team`;
     console.error('❌ Failed to send email:', error);
     
     // Show error with solution
-    alert(`❌ Email failed to send!\n\nError: ${error.message || 'Unknown error'}\n\nSOLUTION:\n1. Go to https://www.emailjs.com/\n2. Get your Public Key from Account page\n3. Replace 'YOUR_PUBLIC_KEY_HERE' in the code\n4. Create a simple template called 'template_simple'`);
+    alert(`❌ Email failed to send!\n\nError: ${error.message || 'Unknown error'}\n\nSOLUTION:\n1. Go to https://www.emailjs.com/\n2. Create a template called 'template_simple'\n3. Add variables: {{to_email}}, {{to_name}}, {{subject}}, {{message}}\n\nThen try again!`);
     
     return false;
   }
 };
 
-// Alternative: Use browser's mailto (always works)
+// Alternative: Use browser's mailto (always works as backup)
 export const sendMailtoEmail = (
   customerEmail: string,
   customerName: string,
