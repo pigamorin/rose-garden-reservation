@@ -1,5 +1,4 @@
 import { Reservation } from '@/types/reservation';
-import { sendWorkingEmail, showEmailNotification } from './workingEmailService';
 
 const RESERVATIONS_KEY = 'rose_garden_reservations';
 const BLOCKED_SLOTS_KEY = 'rose_garden_blocked_slots';
@@ -46,9 +45,12 @@ export const updateReservationStatus = (id: string, status: Reservation['status'
     reservation.status = status;
     localStorage.setItem(RESERVATIONS_KEY, JSON.stringify(reservations));
     
-    // Send WORKING email notifications
+    console.log(`🔄 Status updated from ${oldStatus} to ${status} for reservation ${id}`);
+    
+    // IMMEDIATE EMAIL NOTIFICATION - Send email when status changes to confirmed or declined
     if ((status === 'confirmed' || status === 'declined') && oldStatus !== status) {
-      sendEmailNotification(reservation, status);
+      console.log(`📧 Triggering email notification for ${reservation.customerName}`);
+      sendEmailNotificationNow(reservation, status);
     }
   }
 };
@@ -135,19 +137,19 @@ export const isSlotBlocked = (date: string, time: string): boolean => {
   return blockedSlots.some(slot => slot.date === date && slot.time === time);
 };
 
-// GUARANTEED WORKING EMAIL NOTIFICATION SYSTEM
-const sendEmailNotification = (reservation: Reservation, status: 'confirmed' | 'declined') => {
+// IMMEDIATE EMAIL NOTIFICATION SYSTEM
+const sendEmailNotificationNow = (reservation: Reservation, status: 'confirmed' | 'declined') => {
   const { customerName, email, communicationPreference } = reservation;
   
-  console.log(`📧 SENDING EMAIL NOTIFICATION:`, {
+  console.log(`📧 IMMEDIATE EMAIL NOTIFICATION:`, {
     customer: customerName,
     email: email,
     status: status,
     preference: communicationPreference
   });
 
-  // Send email if customer has email and prefers email (or no preference)
-  if (email && (!communicationPreference || communicationPreference === 'email')) {
+  // Always try to send email if customer has email address
+  if (email) {
     const reservationDetails = {
       id: reservation.id,
       date: new Date(reservation.date).toLocaleDateString(),
@@ -156,16 +158,68 @@ const sendEmailNotification = (reservation: Reservation, status: 'confirmed' | '
       status: status
     };
 
-    // Show notification first
-    showEmailNotification(email, customerName, status);
+    // Create the email content
+    const subject = status === 'confirmed' 
+      ? '✅ Reservation Confirmed - Rose Garden Restaurant'
+      : '❌ Reservation Update - Rose Garden Restaurant';
+
+    const body = status === 'confirmed' 
+      ? `Dear ${customerName},
+
+✅ GREAT NEWS! Your reservation has been CONFIRMED.
+
+📅 Date: ${reservationDetails.date}
+🕐 Time: ${reservationDetails.time}
+👥 Party Size: ${reservationDetails.partySize} guests
+🆔 Reservation ID: ${reservationDetails.id}
+
+We look forward to serving you at Rose Garden Restaurant!
+
+If you need to make any changes, please call us at:
+📞 0244 365634
+
+Thank you for choosing Rose Garden Restaurant!
+
+Best regards,
+Rose Garden Team
+🌹 Rose Garden Restaurant`
+      : `Dear ${customerName},
+
+❌ We regret to inform you that we cannot accommodate your reservation.
+
+📅 Requested Date: ${reservationDetails.date}
+🕐 Requested Time: ${reservationDetails.time}
+👥 Party Size: ${reservationDetails.partySize} guests
+
+Please call us at 📞 0244 365634 to discuss alternative dates and times.
+
+We sincerely apologize for any inconvenience and look forward to serving you soon.
+
+Best regards,
+Rose Garden Team
+🌹 Rose Garden Restaurant`;
+
+    // Create mailto link and open immediately
+    const mailtoLink = `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
     
-    // Open email client with pre-written email
-    setTimeout(() => {
-      sendWorkingEmail(email, customerName, reservationDetails);
-    }, 1000);
+    console.log(`📧 Opening email client for ${customerName} (${email})`);
     
-    console.log(`✅ Email client opened for ${customerName} (${email})`);
+    // Open email client immediately
+    if (typeof window !== 'undefined') {
+      window.open(mailtoLink, '_blank');
+      
+      // Show confirmation
+      setTimeout(() => {
+        alert(`📧 EMAIL CLIENT OPENED!\n\n✅ Ready to send to:\n\nCustomer: ${customerName}\nEmail: ${email}\nStatus: ${status.toUpperCase()}\n\n👆 Your email client should have opened with the message ready to send!`);
+      }, 1000);
+    }
+    
+    console.log(`✅ Email notification triggered for ${customerName} (${email}) - Status: ${status}`);
   } else {
-    console.log(`📧 Skipping email - no email address or different communication preference`);
+    console.log(`📧 No email address provided for ${customerName} - skipping email notification`);
+    
+    if (typeof window !== 'undefined') {
+      alert(`⚠️ No email address for ${customerName}\n\nReservation status updated to: ${status.toUpperCase()}\n\nCustomer will need to be notified by phone.`);
+    }
   }
 };
