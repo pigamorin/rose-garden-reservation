@@ -1,4 +1,5 @@
 import { Reservation } from '@/types/reservation';
+import { amazonSNS } from './amazonSNSService';
 
 const RESERVATIONS_KEY = 'rose_garden_reservations';
 const BLOCKED_SLOTS_KEY = 'rose_garden_blocked_slots';
@@ -47,10 +48,10 @@ export const updateReservationStatus = (id: string, status: Reservation['status'
     
     console.log(`🔄 Status updated from ${oldStatus} to ${status} for reservation ${id}`);
     
-    // IMMEDIATE EMAIL NOTIFICATION - Send email when status changes to confirmed or declined
+    // Send Amazon SNS notification when status changes
     if ((status === 'confirmed' || status === 'declined') && oldStatus !== status) {
-      console.log(`📧 Triggering email notification for ${reservation.customerName}`);
-      sendEmailNotificationNow(reservation, status);
+      console.log(`📧 Triggering Amazon SNS notification for ${reservation.customerName}`);
+      sendSNSNotification(reservation, status);
     }
   }
 };
@@ -137,89 +138,73 @@ export const isSlotBlocked = (date: string, time: string): boolean => {
   return blockedSlots.some(slot => slot.date === date && slot.time === time);
 };
 
-// IMMEDIATE EMAIL NOTIFICATION SYSTEM
-const sendEmailNotificationNow = (reservation: Reservation, status: 'confirmed' | 'declined') => {
-  const { customerName, email, communicationPreference } = reservation;
+// AMAZON SNS NOTIFICATION SYSTEM
+const sendSNSNotification = async (reservation: Reservation, status: 'confirmed' | 'declined') => {
+  const { customerName, email, phone, communicationPreference } = reservation;
   
-  console.log(`📧 IMMEDIATE EMAIL NOTIFICATION:`, {
+  console.log(`📧 SENDING SNS NOTIFICATION:`, {
     customer: customerName,
     email: email,
+    phone: phone,
     status: status,
     preference: communicationPreference
   });
 
-  // Always try to send email if customer has email address
-  if (email) {
-    const reservationDetails = {
-      id: reservation.id,
-      date: new Date(reservation.date).toLocaleDateString(),
-      time: reservation.time,
-      partySize: reservation.partySize,
-      status: status
-    };
-
-    // Create the email content
-    const subject = status === 'confirmed' 
-      ? '✅ Reservation Confirmed - Rose Garden Restaurant'
-      : '❌ Reservation Update - Rose Garden Restaurant';
-
-    const body = status === 'confirmed' 
-      ? `Dear ${customerName},
-
-✅ GREAT NEWS! Your reservation has been CONFIRMED.
-
-📅 Date: ${reservationDetails.date}
-🕐 Time: ${reservationDetails.time}
-👥 Party Size: ${reservationDetails.partySize} guests
-🆔 Reservation ID: ${reservationDetails.id}
-
-We look forward to serving you at Rose Garden Restaurant!
-
-If you need to make any changes, please call us at:
-📞 0244 365634
-
-Thank you for choosing Rose Garden Restaurant!
-
-Best regards,
-Rose Garden Team
-🌹 Rose Garden Restaurant`
-      : `Dear ${customerName},
-
-❌ We regret to inform you that we cannot accommodate your reservation.
-
-📅 Requested Date: ${reservationDetails.date}
-🕐 Requested Time: ${reservationDetails.time}
-👥 Party Size: ${reservationDetails.partySize} guests
-
-Please call us at 📞 0244 365634 to discuss alternative dates and times.
-
-We sincerely apologize for any inconvenience and look forward to serving you soon.
-
-Best regards,
-Rose Garden Team
-🌹 Rose Garden Restaurant`;
-
-    // Create mailto link and open immediately
-    const mailtoLink = `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  // Check if Amazon SNS is configured
+  const snsStatus = amazonSNS.getStatus();
+  if (!snsStatus.configured) {
+    console.log('⚠️ Amazon SNS not configured - falling back to browser notification');
     
-    console.log(`📧 Opening email client for ${customerName} (${email})`);
-    
-    // Open email client immediately
+    // Show fallback notification
     if (typeof window !== 'undefined') {
-      window.open(mailtoLink, '_blank');
-      
-      // Show confirmation
       setTimeout(() => {
-        alert(`📧 EMAIL CLIENT OPENED!\n\n✅ Ready to send to:\n\nCustomer: ${customerName}\nEmail: ${email}\nStatus: ${status.toUpperCase()}\n\n👆 Your email client should have opened with the message ready to send!`);
+        alert(`📧 Notification Ready!\n\nCustomer: ${customerName}\nEmail: ${email || 'Not provided'}\nPhone: ${phone || 'Not provided'}\nStatus: ${status.toUpperCase()}\n\n⚠️ Configure Amazon SNS in Dashboard → SNS Setup for automatic delivery.`);
       }, 1000);
     }
+    return;
+  }
+
+  // Prepare reservation details
+  const reservationDetails = {
+    id: reservation.id,
+    date: new Date(reservation.date).toLocaleDateString(),
+    time: reservation.time,
+    partySize: reservation.partySize,
+    status: status
+  };
+
+  // Determine communication preference
+  let commPref: 'email' | 'sms' | 'both' = 'email';
+  if (communicationPreference === 'sms') {
+    commPref = 'sms';
+  } else if (communicationPreference === 'both' || (!communicationPreference && email && phone)) {
+    commPref = 'both';
+  }
+
+  try {
+    // Send notification via Amazon SNS
+    const success = await amazonSNS.sendReservationNotification(
+      email || '',
+      phone || '',
+      customerName,
+      reservationDetails,
+      commPref
+    );
+
+    if (success) {
+      console.log(`✅ SNS notification sent successfully to ${customerName}`);
+    } else {
+      console.log(`❌ SNS notification failed for ${customerName}`);
+    }
+
+  } catch (error) {
+    console.error('❌ SNS notification error:', error);
     
-    console.log(`✅ Email notification triggered for ${customerName} (${email}) - Status: ${status}`);
-  } else {
-    console.log(`📧 No email address provided for ${customerName} - skipping email notification`);
-    
+    // Show error notification
     if (typeof window !== 'undefined') {
-      alert(`⚠️ No email address for ${customerName}\n\nReservation status updated to: ${status.toUpperCase()}\n\nCustomer will need to be notified by phone.`);
+      setTimeout(() => {
+        alert(`❌ SNS Notification Failed!\n\nCustomer: ${customerName}\nError: ${error.message}\n\nPlease check your Amazon SNS configuration.`);
+      }, 1000);
     }
   }
 };

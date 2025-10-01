@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { CalendarIcon, ClockIcon, UsersIcon, TrendingUpIcon, CheckCircleIcon, XCircleIcon, SettingsIcon, UserCogIcon, ArrowLeftIcon, LogOutIcon, MailIcon, MessageSquareIcon, PhoneIcon, SendIcon } from 'lucide-react';
+import { CalendarIcon, ClockIcon, UsersIcon, TrendingUpIcon, CheckCircleIcon, XCircleIcon, SettingsIcon, UserCogIcon, ArrowLeftIcon, LogOutIcon, MailIcon, MessageSquareIcon, PhoneIcon, SendIcon, CloudIcon } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { getReservations, updateReservationStatus, updateReservationAttendance } from '@/lib/storage';
 import { getCurrentUser, hasPermission } from '@/lib/userStorage';
@@ -17,6 +17,7 @@ import EmailSetup from '@/components/EmailSetup';
 import WhatsAppSetup from '@/components/WhatsAppSetup';
 import SMSSetup from '@/components/SMSSetup';
 import SMSIntegration from '@/components/SMSIntegration';
+import AmazonSNSSetup from '@/components/AmazonSNSSetup';
 
 export default function Dashboard() {
   const [reservations, setReservations] = useState<Reservation[]>([]);
@@ -91,7 +92,8 @@ export default function Dashboard() {
     { id: 'email', label: 'Email Setup', icon: MailIcon, permission: 'manage_users' },
     { id: 'whatsapp', label: 'WhatsApp Setup', icon: MessageSquareIcon, permission: 'manage_users' },
     { id: 'sms-setup', label: 'SMS Setup', icon: PhoneIcon, permission: 'manage_users' },
-    { id: 'sms-integration', label: 'SMS Integration', icon: SendIcon, permission: 'manage_users' }
+    { id: 'sms-integration', label: 'SMS Integration', icon: SendIcon, permission: 'manage_users' },
+    { id: 'amazon-sns', label: 'Amazon SNS', icon: CloudIcon, permission: 'manage_users' }
   ].filter(tab => hasPermission(tab.permission));
 
   console.log('Dashboard - Available tabs:', availableTabs.map(t => t.id));
@@ -180,7 +182,7 @@ export default function Dashboard() {
 
         {/* Main Content Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4 lg:grid-cols-8">
+          <TabsList className="grid w-full grid-cols-5 lg:grid-cols-9">
             {availableTabs.map(tab => {
               const Icon = tab.icon;
               return (
@@ -272,6 +274,12 @@ export default function Dashboard() {
           {hasPermission('manage_users') && (
             <TabsContent value="sms-integration">
               <SMSIntegration />
+            </TabsContent>
+          )}
+
+          {hasPermission('manage_users') && (
+            <TabsContent value="amazon-sns">
+              <AmazonSNSSetup />
             </TabsContent>
           )}
         </Tabs>
